@@ -52,7 +52,7 @@ NAT_MAP = {
     "VIETNAMESE": "越南", "VIETNAM": "越南", "VN": "越南",
     "MYANMAR": "缅甸", "BURMESE": "缅甸", "MM": "缅甸",
     "INDONESIAN": "印度尼西亚", "INDONESIA": "印度尼西亚", "ID": "印度尼西亚",
-    "PHILIPPINE": "菲律宾", "PHILIPPINES": "菲律宾", "PH": "菲律宾",
+    "PHILIPPINE": "菲律宾", "PHILIPPINES": "菲律宾", "PHILIPPINO": "菲律宾", "FILIPINO": "菲律宾", "PH": "菲律宾",
     "PANAMANIAN": "巴拿马", "PANAMA": "巴拿马", "PA": "巴拿马",
     "INDIAN": "印度", "INDIA": "印度", "IN": "印度",
 }
@@ -64,17 +64,21 @@ NAT_CODE = {
 
 DUTY_CODE = {
     "MASTER": "51", "CAPT": "51", "CAPTAIN": "51",
-    "C/O": "52", "C.O.": "52", "CHIEF OFFICER": "52",
-    "2/O": "53", "2ND OFFICER": "53",
-    "3/O": "54", "3RD OFFICER": "54",
-    "OS": "55", "OLR": "55", "ORDINARY SEAMAN": "55", "C/CK": "55",
-    "AB": "55", "ABLE SEAMAN": "55",
+    "C/O": "52", "C.O.": "52", "CH. OFF": "52", "CHIEF OFFICER": "52", "CH OFF": "52",
+    "2/O": "53", "2ND OFFICER": "53", "2ND OFF": "53", "2ND OFF.": "53",
+    "3/O": "54", "3RD OFFICER": "54", "3RD OFF": "54",
+    "OS": "55", "OLR": "55", "ORDINARY SEAMAN": "55", "C/CK": "55", "CH. COOK": "55", "CH COOK": "55",
+    "AB": "55", "ABLE SEAMAN": "55", "AB1": "55", "AB2": "55", "AB3": "55",
     "BOSUN": "56", "BSN": "56", "BOATSWAIN": "56",
-    "C/E": "61", "CHIEF ENGINEER": "61",
-    "2/E": "63", "2ND ENGINEER": "63",
-    "3/E": "64", "3RD ENGINEER": "64",
+    "C/E": "61", "CHIEF ENGINEER": "61", "CH/ENGR": "61", "CH.ENGR": "61",
+    "2/E": "63", "2ND ENGINEER": "63", "2ND ENGR": "63", "2ND ENGR.": "63",
+    "3/E": "64", "3RD ENGINEER": "64", "3RD ENGR": "64", "3RD ENGR.": "64",
+    "4/E": "65", "4TH ENGINEER": "65", "4TH ENGR": "65", "4TH ENGR.": "65",
     "ETR": "65", "FTR": "65", "FITTER": "65", "OILER": "65",
-    "ELECTRICIAN": "65", "OIL1": "65", "OIL2": "65",
+    "ELECTRICIAN": "65", "ELECT": "65", "OIL1": "65", "OIL2": "65", "OILER1": "65", "OILER2": "65",
+    "WIPER": "65",
+    "MESSMAN": "65",
+    "OS1": "55", "OS2": "55",  # 普通水手
 }
 
 PORT_CODE = {
@@ -92,14 +96,33 @@ PORT_CODE = {
     "NINGBO": "CNNGB", "宁波": "CNNGB",
     "QINGDAO": "CNTAO", "青岛": "CNTAO",
     "RIZHAO": "CNRZH", "日照": "CNRZH",
+    "DONGGUAN": "CNDGG", "东莞": "CNDGG",
+    "GUANGZHOU": "CNGZG", "GUANGDONG": "CNGZG", "广州": "CNGZG", "广东": "CNGZG",
+    "LUOYUAN": "CNLYA", "罗源": "CNLYA",
     # 印尼
     "MOROWALI": "IDMOR",
     "POMALAA": "IDPUM",
     "OBI ISLAND": "IDOBI", "OBI": "IDOBI",
+    "MUARA BERAU": "IDSRI", "SUNGAI BERAU": "IDSRI", "IDSRI": "IDSRI",
+    "TANJUNG BARA": "IDTBA", "IDTBA": "IDTBA",
+    # 菲律宾
+    "SURIGAO": "PHSUG", "PHSUG": "PHSUG",
+    "SAN FERNANDO CEBU": "PHCEB", "CEBU": "PHCEB", "PHCEB": "PHCEB",
+    # 文莱
+    "MUARA": "BNMUA", "BNMUA": "BNMUA",
+    # 新加坡
+    "SINGAPORE": "SGSIN", "SGSIN": "SGSIN",
+    # 香港
+    "HONG KONG": "HKHKG", "HONGKONG": "HKHKG", "HKHKG": "HKHKG",
     # 公海
     "OPEN SEA": "OPSEA", "OPENSEA": "OPSEA", "OPSEA": "OPSEA",
     # 国际
     "HITACHINAKA": "JPHIC",
+    "GUANGDONG, CHINA": "CNGZG",
+    "CEBU, PHILIPPINES": "PHCEB",
+    "SURIGAO, PHILIPPINES": "PHSUG",
+    "DAVAO, PHILIPPINES": "PHDVO",
+    "GUANGDONG": "CNGZG",
 }
 
 
@@ -108,17 +131,40 @@ PORT_CODE = {
 # ============================================================
 
 def normalize_date(s):
-    """宽松日期解析"""
+    """宽松日期解析 - 支持 英文月份 (JAN/Feb) 和 中文 (2026年7月)"""
     if s is None: return None
     if isinstance(s, datetime): return s
     s = str(s).strip()
     s = re.sub(r'\s+', ' ', s)
     s = s.replace(' :', ':').replace(': ', ':')
     s = re.sub(r'(\d{4})/(\d{1,2})/ ?(\d{1,2})', r'\1/\2/\3', s)
+
+    # 英文月份映射
+    en_months = {
+        'JAN': '01', 'FEB': '02', 'MAR': '03', 'APR': '04',
+        'MAY': '05', 'JUN': '06', 'JUL': '07', 'AUG': '08',
+        'SEP': '09', 'OCT': '10', 'NOV': '11', 'DEC': '12',
+    }
+    # 把 "29 JAN 1969" 转为 "29 01 1969" / "31 Mar 2026" -> "31 03 2026"
+    en_pattern = re.compile(r'\b(\d{1,2})\s+([A-Za-z]{3})\s+(\d{2,4})\b')
+    m = en_pattern.search(s)
+    if m:
+        d, mon, y = m.groups()
+        if mon.upper() in en_months:
+            s = s.replace(m.group(0), f'{d}/{en_months[mon.upper()]}/{y}')
+
+    # "Aug 12, 2029" -> "08/12/2029" / "Jul 05, 2029" -> "07/05/2029"
+    en_pattern2 = re.compile(r'\b([A-Za-z]{3})\s+(\d{1,2}),?\s+(\d{2,4})\b')
+    m = en_pattern2.search(s)
+    if m:
+        mon, d, y = m.groups()
+        if mon.upper() in en_months:
+            s = s.replace(m.group(0), f'{en_months[mon.upper()]}/{d}/{y}')
+
     fmts = [
         "%Y/%m/%d %H:%M:%S", "%Y/%m/%d %H:%M", "%Y-%m-%d %H:%M:%S",
         "%Y-%m-%d", "%Y/%m/%d", "%Y%m%d",
-        "%d/%m/%Y", "%m/%d/%Y",
+        "%d/%m/%Y", "%m/%d/%Y", "%d %m %Y",
     ]
     for f in fmts:
         try: return datetime.strptime(s, f)
@@ -127,67 +173,282 @@ def normalize_date(s):
 
 
 def parse_crew_xlsx(path):
-    """解析 IMO Crew List"""
+    """解析 IMO Crew List - 支持两种格式:
+    1) 旧格式: 表头有 FAMILY NAME 列
+    2) 新格式 (IMCO FAL Form 1969): R10 是表头, 字段用 7. No. 8. Family name 等
+    """
     import openpyxl
     wb = openpyxl.load_workbook(path, data_only=True)
     ws = wb["ARR"] if "ARR" in wb.sheetnames else wb[wb.sheetnames[0]]
 
-    # 找标题行
+    # 找标题行 - 看是不是新格式
+    is_new_format = False
     header_row = None
     for r in range(1, 15):
-        cells = [str(c.value or '').upper() for c in ws[r][:15]]
-        if 'FAMILY NAME' in cells or 'NAME' in cells:
+        cells = [str(c.value or '') for c in ws[r][:15]]
+        cell_text = ' '.join(cells)
+        # 新格式: R10 含 "Family name" 和 "Rank" 和 "Nationality"
+        if 'FAMILY NAME' in cell_text.upper() and 'RANK' in cell_text.upper():
+            header_row = r
+            is_new_format = True
+            break
+        # 旧格式: 直接 FAMILY NAME
+        if 'FAMILY NAME' in [c.upper() for c in cells]:
             header_row = r
             break
     if header_row is None: header_row = 7
 
     # 找列索引
     headers = [str(ws.cell(header_row, c).value or '').upper() for c in range(1, 20)]
-    col = {}
-    for kw, idx_name in [('NO.', 'no'), ('NAME', 'name'), ('SEX', 'sex'),
-                          ('RANK', 'rank'), ('BIRTH', 'birth'), ('NATIONAL', 'nat'),
-                          ('PLACE', 'place'), ('SEAMAN', 'seaman'), ('PASSPORT', 'passport'),
-                          ('SIGNED ON', 'signedon')]:
+
+    if is_new_format:
+        # 新格式: 找 "8. FAMILY NAME" / "9. RANK" 等
+        col = {}
         for i, h in enumerate(headers):
-            if kw in h and idx_name not in col:
-                col[idx_name] = i + 1  # 1-indexed
+            hu = h.upper()
+            if 'NO.' in hu and 'no' not in col: col['no'] = i + 1
+            elif 'FAMILY NAME' in hu: col['name'] = i + 1
+            elif 'GENDER' in hu or 'SEX' in hu: col['sex'] = i + 1
+            elif 'RANK' in hu: col['rank'] = i + 1
+            elif 'NATIONALITY' in hu and 'nat' not in col: col['nat'] = i + 1
+            elif 'BIRTH' in hu: col['birth'] = i + 1
+            elif 'PASSPORT' in hu: col['passport'] = i + 1
+            elif 'SEAMAN' in hu: col['seaman'] = i + 1
+            elif 'SIGN ON' in hu: col['signedon'] = i + 1
+            elif 'PLACE' in hu and 'sign' not in col: col['place'] = i + 1
+
+        # 备用默认值 (新格式常见布局)
+        col.setdefault('no', 2)
+        col.setdefault('name', 3)
+        col.setdefault('rank', 4)
+        col.setdefault('sex', 5)
+        col.setdefault('nat', 6)
+        col.setdefault('birth', 7)
+        col.setdefault('passport', 8)
+        col.setdefault('seaman', 9)
+        col.setdefault('signedon', 10)
+    else:
+        col = {}
+        for kw, idx_name in [('NO.', 'no'), ('NAME', 'name'), ('SEX', 'sex'),
+                              ('RANK', 'rank'), ('BIRTH', 'birth'), ('NATIONAL', 'nat'),
+                              ('PLACE', 'place'), ('SEAMAN', 'seaman'), ('PASSPORT', 'passport'),
+                              ('SIGNED ON', 'signedon')]:
+            for i, h in enumerate(headers):
+                if kw in h and idx_name not in col:
+                    col[idx_name] = i + 1
 
     crews = []
     for r in range(header_row + 1, ws.max_row + 1):
         no = ws.cell(r, col.get('no', 1)).value
         if no is None: continue
-        # 跳过中文行
+        # 跳过中文行 / #REF! 行
         nm = str(ws.cell(r, col.get('name', 2)).value or '')
         if not re.search(r'[A-Z]', nm): continue
+        if '#REF' in nm or '#REF' in str(ws.cell(r, col.get('rank', 4)).value or ''): continue
         try:
             no_int = int(float(str(no).strip()))
         except: continue
 
         rank = str(ws.cell(r, col.get('rank', 5)).value or '').strip().upper()
         nat = str(ws.cell(r, col.get('nat', 6)).value or '').strip().upper()
-        seaman = str(ws.cell(r, col.get('seaman', 8)).value or '').strip()
-        passport = str(ws.cell(r, col.get('passport', 10)).value or '').strip()
-        bd = ws.cell(r, col.get('birth', 5)).value
-        so = ws.cell(r, col.get('signedon', 11)).value
-        so_place = str(ws.cell(r, col.get('signedon', 11) + 1).value or '').strip() if col.get('signedon') else ''
+        # 出生地: 城市 + 日期 (可能含 \n)
+        bd_cell = ws.cell(r, col.get('birth', 5)).value
+        if bd_cell:
+            # 可能是 "TANZA CAVITE \n 29 JAN 1969" - 拆分找日期
+            bd_str = str(bd_cell)
+            if '\n' in bd_str:
+                # 找包含月份名的行
+                parts = bd_str.split('\n')
+                for p in parts:
+                    p = p.strip()
+                    if re.search(r'[A-Za-z]{3}', p) and re.search(r'\d', p):
+                        bd = normalize_date(p)
+                        break
+            else:
+                bd = normalize_date(bd_str)
+        else:
+            bd = None
+
+        # 护照号 / 海员证号: 新格式中是 "P7104991A\n 09 MAY 2028" - 取第一行
+        passport_raw = str(ws.cell(r, col.get('passport', 8)).value or '').strip()
+        seaman_raw = str(ws.cell(r, col.get('seaman', 9)).value or '').strip()
+        passport = passport_raw.split('\n')[0].strip() if passport_raw else ''
+        seaman = seaman_raw.split('\n')[0].strip() if seaman_raw else ''
+
+        # signed on: 可能是 "GUANGDONG, CHINA\n 31 Mar 2026"
+        so_cell = ws.cell(r, col.get('signedon', 10)).value
+        so_date = None
+        so_place = ''
+        if so_cell:
+            so_str = str(so_cell)
+            # 拆 city / date
+            parts = so_str.split('\n')
+            so_place = parts[0].strip() if parts else ''
+            if len(parts) > 1:
+                so_date = normalize_date(parts[1])
+            else:
+                so_date = normalize_date(so_cell)
 
         crews.append({
             'no': no_int,
-            'name_en': nm,
+            'name_en': nm.strip(),
             'sex': '1' if 'M' in str(ws.cell(r, col.get('sex', 3)).value or '').upper() else '2',
             'rank': rank,
-            'birth': normalize_date(bd),
+            'birth': bd,
             'nat_en': nat,
             'seaman_no': seaman,
             'passport_no': passport,
-            'signon_date': normalize_date(so),
+            'signon_date': so_date,
             'signon_place': so_place,
         })
     return crews
 
 
 def parse_poc_xlsx(path):
-    """解析 Port of Call"""
+    """解析 Port of Call - 支持 xlsx 和 PDF"""
+    if path.lower().endswith('.pdf'):
+        return parse_poc_pdf(path)
+    return parse_poc_xlsx_native(path)
+
+
+def parse_poc_pdf(path):
+    """从 PDF 提取港口列表
+
+    PDF 格式: VESSEL NAME / FLAG / 然后是表格 NO. | NAME | UNCODE | VOY | MARSEC | ARRIVED | SAILED | REMARKS
+    """
+    import re
+    import fitz  # PyMuPDF
+    doc = fitz.open(path)
+    full_text = ''
+    for page in doc:
+        full_text += page.get_text() + '\n'
+
+    # 提取头部信息
+    vessel = ''
+    flag = ''
+    port_of_arrival = ''
+    m = re.search(r'VESSEL NAME:\s*(.+)', full_text)
+    if m: vessel = m.group(1).strip()
+    m = re.search(r'FLAG:\s*(.+)', full_text)
+    if m: flag = m.group(1).strip()
+    m = re.search(r'PORT OF ARRIVAL:\s*(.+)', full_text)
+    if m: port_of_arrival = m.group(1).strip()
+
+    # 找表格行: NO. NUMBER | NAME | UNCODE | VOY | MARSEC | ARRIVED | SAILED | REMARKS
+    # 行格式: NO. \n NAME (可能有逗号后的国家) \n UNCODE \n VOY \n MARSEC \n ARRIVED \n SAILED \n REMARKS
+    records = []
+
+    # 简化策略: 用 "NAME OF PORTS" 作为表头, 找后续行
+    # PDF 中每条港口记录是连续 8-9 行
+    lines = full_text.split('\n')
+    i = 0
+    # 找到表头之后开始
+    while i < len(lines):
+        if 'NAME OF PORTS' in lines[i]:
+            i += 1
+            break
+        i += 1
+    # 跳过表头
+    while i < len(lines) and 'REMARKS' not in lines[i]:
+        i += 1
+    i += 1  # 跳过 REMARKS 行
+
+    while i < len(lines):
+        line = lines[i].strip()
+        # 找行号行 (纯数字 1-10)
+        if line.isdigit() and 1 <= int(line) <= 20:
+            no = int(line)
+            i += 1
+            # 读 NAME (可能跨多行: "SAN FERNANDO CEBU, \n PHILIPPINES")
+            name = lines[i].strip()
+            i += 1
+            # 如果下一行不是 UNLOCODE (5字母代码), 是国家名 — 把它加到 name
+            # UNLOCODE 特征: 5 个大写字母
+            if i < len(lines) and not re.match(r'^[A-Z]{5}$', lines[i].strip()):
+                name = name + ' ' + lines[i].strip()
+                i += 1
+
+            uncode = lines[i].strip() if i < len(lines) else ''
+            i += 1
+            voy = lines[i].strip() if i < len(lines) else ''
+            i += 1
+            marsec = lines[i].strip() if i < len(lines) else ''
+            i += 1
+            arr_str = lines[i].strip() if i < len(lines) else ''
+            i += 1
+            dep_str = lines[i].strip() if i < len(lines) else ''
+            i += 1
+            # REMARKS 可能是单行也可能是多行 (如 "LOADING  COAL" 或 "DISCHARGING  CLINKER")
+            # 简单处理: 一直读到下一行是数字 (下一个港口号)
+            remarks_parts = []
+            while i < len(lines):
+                l = lines[i].strip()
+                if l.isdigit() and 1 <= int(l) <= 20:
+                    break
+                if 'CAPT.' in l or 'MASTER' in l or 'PORT OF' in l or 'DATE OF' in l or 'LAST' in l.upper() or l == '':
+                    break
+                remarks_parts.append(l)
+                i += 1
+            remarks = ' '.join(remarks_parts).strip()
+
+            # 转换日期
+            arr_date = parse_pdf_date(arr_str) if arr_str else None
+            dep_date = parse_pdf_date(dep_str) if dep_str else None
+
+            # 拆分国家/港口
+            # PDF 中 NAME 字段是 "PORT_NAME, COUNTRY" 格式
+            # 例: "MUARA BERAU, INDONESIA" -> port="MUARA BERAU" country="INDONESIA"
+            name_upper = name.upper().strip()
+            country = ''
+            port = name_upper
+
+            # 1) 找 ", COUNTRY" 形式 - 优先匹配最长国家名
+            for cn in ['HONG KONG, CHINA', 'INDONESIA', 'PHILIPPINES', 'SINGAPORE', 'CHINA', 'BRUNEI']:
+                if (', ' + cn) in name_upper:
+                    port = name_upper.split(', ' + cn)[0].strip()
+                    country = cn
+                    break
+            # 2) 特殊情况: "HONG KONG" 没有逗号
+            if not country and 'HONG KONG' in name_upper:
+                country = 'HONG KONG'
+                port = 'HONG KONG'
+
+            country_code = uncode[:2] if uncode else ''
+
+            records.append({
+                'no': no,
+                'port': port,
+                'country': country,
+                'uncode': uncode,
+                'arr': arr_date,
+                'dep': dep_date,
+                'remarks': remarks,
+                'marsec': marsec,
+            })
+            continue
+        i += 1
+
+    return records
+
+
+def parse_pdf_date(s):
+    """解析 PDF 日期: 24-Jun-26 -> datetime"""
+    import re
+    from datetime import datetime
+    s = s.strip()
+    if not s: return None
+    months = {'JAN': 1, 'FEB': 2, 'MAR': 3, 'APR': 4, 'MAY': 5, 'JUN': 6,
+              'JUL': 7, 'AUG': 8, 'SEP': 9, 'OCT': 10, 'NOV': 11, 'DEC': 12}
+    m = re.match(r'(\d{1,2})[-\s](\w{3})[-\s](\d{2,4})', s)
+    if not m: return None
+    day, mon, year = m.groups()
+    year = int(year)
+    if year < 100: year += 2000
+    return datetime(year, months.get(mon.upper(), 1), int(day))
+
+
+def parse_poc_xlsx_native(path):
+    """解析 xlsx 格式的 Port of Call"""
     import openpyxl
     wb = openpyxl.load_workbook(path, data_only=True)
     ws = wb["Sheet1"] if "Sheet1" in wb.sheetnames else wb[wb.sheetnames[0]]
@@ -392,16 +653,22 @@ def build_port_call_rows(records):
             dep_str = ''
         port_code = PORT_CODE.get(r['port'].upper(), '')
 
-        # 国家代码
-        country = r['country']
+        # 国家代码 - 从 uncode 取前 2 字母
+        country = r['country'].upper()
         if country == 'UN' or 'OPEN' in r['port'].upper():
             country = 'UN'
-        elif country == 'CN':
-            country = 'CN'
-        elif country == 'ID':
-            country = 'ID'
+        elif country in ('CHINA', 'CN'): country = 'CN'
+        elif country in ('INDONESIA', 'ID'): country = 'ID'
+        elif country in ('PHILIPPINES', 'PH'): country = 'PH'
+        elif country in ('SINGAPORE', 'SG'): country = 'SG'
+        elif country in ('HONG KONG', 'HONG KONG, CHINA', 'HK'): country = 'HK'
+        elif country in ('BRUNEI', 'BN'): country = 'BN'
         else:
-            country = 'UN'
+            # 用 uncode 前 2 字母 (IDSRI->ID, SGSIN->SG, PHCEB->PH)
+            if r.get('uncode'):
+                country = r['uncode'][:2].upper()
+            else:
+                country = 'UN'
 
         row = build_row(i, [
             ('A', i - 2),
@@ -435,7 +702,16 @@ def build_top10_rows(records):
         else:
             dep_str = ''
         port_code = PORT_CODE.get(r['port'].upper(), '')
+        # 前十港用国家全名 (与海事船岸用代码不同)
         country = r['country']
+        if not country and r.get('uncode'):
+            # 从 uncode 前2字母反推国家名
+            cc = r['uncode'][:2].upper()
+            country = {
+                'CN': 'CHINA', 'ID': 'INDONESIA', 'PH': 'PHILIPPINES',
+                'SG': 'SINGAPORE', 'HK': 'HONG KONG', 'BN': 'BRUNEI',
+                'MY': 'MALAYSIA', 'JP': 'JAPAN', 'KR': 'KOREA',
+            }.get(cc, '')
         if country == 'UN' or 'OPEN' in r['port'].upper():
             country = 'UN'
 
