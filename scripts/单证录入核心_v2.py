@@ -402,7 +402,7 @@ def fill_top10_ports(ws, poc_list):
 def main():
     import argparse
     ap = argparse.ArgumentParser(description="单证录入核心 v2 (.xlsm 17-sheet 模板)")
-    ap.add_argument("crew", nargs="?", default=DEFAULT_CREW, help="IMO Crew List xlsx 路径")
+    ap.add_argument("crew", nargs="?", default=DEFAULT_CREW, help="IMO Crew List xlsx 路径（可省略以仅处理 Port of Call）")
     ap.add_argument("port", nargs="?", default=DEFAULT_POC, help="Port of Call xlsx 路径")
     ap.add_argument("output", nargs="?", default=DEFAULT_OUTPUT, help="输出 .xlsm 路径")
     args = ap.parse_args()
@@ -412,32 +412,33 @@ def main():
     if not os.path.exists(TEMPLATE_XLSM):
         print(f"❌ 模板不存在: {TEMPLATE_XLSM}")
         sys.exit(1)
-    if not os.path.exists(args.crew):
-        print(f"❌ 船员文件不存在: {args.crew}")
-        sys.exit(1)
     if not os.path.exists(args.port):
         print(f"❌ 港口文件不存在: {args.port}")
         sys.exit(1)
+
+    has_crew = args.crew and os.path.exists(args.crew)
 
     # 1. 复制模板作为基础
     shutil.copy(TEMPLATE_XLSM, args.output)
     print(f"📋 复制模板 → {args.output}")
 
     # 2. 解析输入数据
-    crews = parse_crew_xlsx(args.crew)
+    crews = parse_crew_xlsx(args.crew) if has_crew else []
     poc_list = parse_poc_xlsx(args.port)
     print(f"  解析船员 {len(crews)} 人, 港口记录 {len(poc_list)} 条")
+    if not has_crew:
+        print("  ⚠️  未提供船员文件 — 船员相关 sheet 将留空")
 
     # 3. 打开模板并填充
     wb = openpyxl.load_workbook(args.output)
 
-    # 船员名单
-    if "船上非旅客人员清单" in wb.sheetnames:
+    # 船员名单（仅在有船员数据时填充）
+    if has_crew and "船上非旅客人员清单" in wb.sheetnames:
         fill_crew_list(wb["船上非旅客人员清单"], crews)
         print("  ✅ 船上非旅客人员清单")
 
-    # 物品清单
-    if "船上非旅客人员物品清单" in wb.sheetnames:
+    # 物品清单（仅在有船员数据时填充）
+    if has_crew and "船上非旅客人员物品清单" in wb.sheetnames:
         fill_goods_list(wb["船上非旅客人员物品清单"], crews)
         print("  ✅ 船上非旅客人员物品清单")
 
