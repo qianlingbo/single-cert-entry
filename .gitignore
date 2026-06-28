@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Logs / temp
+*.log
+*.swp
+*.swo
+
+# macOS
+.DS_Store
+
+# 用户数据（绝不入库）
+input/*.xlsx
+input/*.xls
+input/*.pdf
+input/*.docx
+input/*.doc
+
+# 生成产物（不入库）
+output/*.xlsx
+output/*.xls
+output/*.xlsm
+output/*.pdf
+output/*.docx
+
+# IDE
+.vscode/
+.idea/
+
+# 临时缓存
+*_tmp_*
