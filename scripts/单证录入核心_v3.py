@@ -476,30 +476,93 @@ SHEET_RID_TO_PATH = {
 }
 
 
-def find_last_data_row(sheet_xml):
-    """找 sheetData 中最大的行号"""
-    matches = re.findall(r'<row r="(\d+)"', sheet_xml)
-    if not matches: return 2
-    return max(int(m) for m in matches)
+def find_data_row_range(sheet_xml):
+    """找 sheetData 中 R3 起的数据占位行范围
+
+    模板里每个可填写 sheet 的 R1 是表头, R2 是说明, R3-Rn 是空数据行（带 styles），
+    我们要替换 R3-Rn 段。
+
+    返回: (start, end) — 替换的起止行号, end 之后保留
+    """
+    # 找 dimension 范围, 跳过 R1/R2
+    dim = re.search(r'<dimension ref="([A-Z]+)(\d+):([A-Z]+)?(\d+)"', sheet_xml)
+    if dim:
+        # 模板结构: R1=表头, R2=说明, R3-Rn=数据占位
+        # dimension 给的 R1 是表头, 所以数据从 R3 开始
+        return 3, int(dim.group(4))
+    # fallback
+    rows = re.findall(r'<row r="(\d+)"', sheet_xml)
+    if len(rows) >= 3:
+        return 3, max(int(r) for r in rows)
+    return 3, 3
 
 
 def fill_sheet_xml(sheet_xml, new_rows_xml):
-    """在 sheetData 末尾插入新行（找到 </sheetData> 前插入）"""
+    """替换 sheetData 中 R3 起的占位行为新数据
+
+    关键: 不能追加在 </sheetData> 前 (会行号冲突)
+    必须用正则把 R3-Rn 的占位行整段删除, 然后在 R2 后插入新行
+    """
     if not new_rows_xml:
         return sheet_xml
-    # 找最后一个 </row> 在 <sheetData> 内的位置
-    # 简单策略：在 </sheetData> 前插入
-    return sheet_xml.replace('</sheetData>', ''.join(new_rows_xml) + '</sheetData>')
+
+    start, end = find_data_row_range(sheet_xml)
+
+    # 删除 R{start} 到 R{end} 之间的所有 <row>...</row>
+    # 用一个 broad 正则: 从 R{start} 开始, 一路匹配到 R{end} 之后的第一个非 row 元素
+    # 更安全: 一个个删除
+    for r in range(start, end + 1):
+        sheet_xml = re.sub(
+            rf'<row r="{r}"[^>]*>.*?</row>',
+            '',
+            sheet_xml,
+            count=1,
+            flags=re.DOTALL,
+        )
+
+    # 在 R{start-1} (即 R2) 的 </row> 之后插入新行
+    # 找 R{start-1} 的 </row> 位置
+    prev = start - 1
+    m = re.search(rf'<row r="{prev}"[^>]*>.*?</row>', sheet_xml, re.DOTALL)
+    if m:
+        insert_pos = m.end()
+    else:
+        # fallback: 第一个 <row 之后
+        m2 = re.search(r'<row r="\d+"', sheet_xml)
+        insert_pos = m2.end() if m2 else 0
+
+    # 同时更新 dimension 范围 - 用精确正则避免贪婪
+    if new_rows_xml:
+        last_row = start + len(new_rows_xml) - 1
+        # 匹配 <dimension ref="A1:Xn" /> (Xn 是任意数字, X 是任意列字母)
+        sheet_xml = re.sub(
+            r'(<dimension ref="[A-Z]+\d+:)([A-Z]+)(\d+)(")',
+            lambda m: m.group(1) + m.group(2) + str(last_row) + m.group(4),
+            sheet_xml,
+            count=1,
+        )
+
+    return sheet_xml[:insert_pos] + ''.join(new_rows_xml) + sheet_xml[insert_pos:]
 
 
-def process(template_path, output_path, crews, records):
-    """核心：复制 zip + 修改 4 个 sheet XML"""
-    modified_sheets = {}  # path -> new xml content
+def process(template_path, output_path, crews, records, output_format='xlsx'):
+    """核心：复制模板 zip + 修改 4 个 sheet XML
 
-    # 1. 船员名单 → sheet1 (船上非旅客人员清单)
+    output_format: 'xlsx' (无宏) 或 'xlsm' (保留宏)
+    'xlsx' 推荐 — Excel 不会弹"文件格式不匹配"警告
+    'xlsm' 保留 vbaProject.bin + 数据验证下拉, 但 Excel 会弹警告
+    """
+    modified_sheets = {}
+
+    if output_format == 'xlsx':
+        # xlsx 模式: 把 .xlsm 模板改造成 .xlsx (去掉 vbaProject 引用)
+        # 但保留 dataValidations 扩展 (openpyxl 会丢)
+        # 简单做法: 直接复制原模板, 改 [Content_Types] 和 workbook.xml.rels
+        pass
+
+    # 1. 船员名单 → sheet1
     crew_rows = build_crew_rows(crews, None)
     if crew_rows:
-        # 读 sheet1 XML，加 crew rows
         with zipfile.ZipFile(template_path) as z:
             sheet1 = z.read('xl/worksheets/sheet1.xml').decode('utf-8')
         modified_sheets['xl/worksheets/sheet1.xml'] = fill_sheet_xml(sheet1, crew_rows)
@@ -525,7 +588,7 @@ def process(template_path, output_path, crews, records):
             sheet6 = z.read('xl/worksheets/sheet6.xml').decode('utf-8')
         modified_sheets['xl/worksheets/sheet6.xml'] = fill_sheet_xml(sheet6, top10_rows)
 
-    # 5. 复制整个 zip，按修改表替换
+    # 5. 复制整个 zip
     with zipfile.ZipFile(template_path, 'r') as zin:
         with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zout:
             for item in zin.infolist():
@@ -533,6 +596,61 @@ def process(template_path, output_path, crews, records):
                     zout.writestr(item, modified_sheets[item.filename].encode('utf-8'))
                 else:
                     zout.writestr(item, zin.read(item.filename))
+
+    # 6. 如果是 xlsx 模式, 改造文件:
+    #    - 移除 vbaProject.bin
+    #    - 修改 [Content_Types].xml (去掉 vbaProject 声明)
+    #    - 修改 workbook.xml (去掉 vbaProject 引用)
+    #    - 修改 _rels/workbook.xml.rels (去掉 vbaProject relationship)
+    if output_format == 'xlsx':
+        convert_to_xlsx(output_path)
+
+
+def convert_to_xlsx(xlsm_path):
+    """把 xlsm 文件就地改造成 xlsx (去掉宏, Excel 不再警告)
+
+    保留: sharedStrings, dataValidations, 所有 sheet, customXml
+    移除: vbaProject.bin + 相关引用
+    """
+    import shutil
+    tmp = xlsm_path + '.tmp.zip'
+    with zipfile.ZipFile(xlsm_path, 'r') as zin:
+        with zipfile.ZipFile(tmp, 'w', zipfile.ZIP_DEFLATED) as zout:
+            for item in zin.infolist():
+                name = item.filename
+                # 跳过 vbaProject
+                if 'vbaProject' in name:
+                    continue
+                data = zin.read(name)
+
+                if name == '[Content_Types].xml':
+                    # 去掉 vbaProject 声明
+                    text = data.decode('utf-8')
+                    text = re.sub(
+                        r'<Default Extension="bin" ContentType="application/vnd\.ms-office\.vbaProject"/>',
+                        '',
+                        text,
+                    )
+                    # 改 macroEnabled.main -> main
+                    text = text.replace(
+                        'application/vnd.ms-excel.sheet.macroEnabled.main+xml',
+                        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml',
+                    )
+                    data = text.encode('utf-8')
+
+                elif name == 'xl/_rels/workbook.xml.rels':
+                    # 去掉 vbaProject relationship
+                    text = data.decode('utf-8')
+                    text = re.sub(
+                        r'<Relationship Id="[^"]*" Type="[^"]*/vbaProject" Target="vbaProject\.bin"/>',
+                        '',
+                        text,
+                    )
+                    data = text.encode('utf-8')
+
+                zout.writestr(item, data)
+
+    shutil.move(tmp, xlsm_path)
 
 
 # ============================================================
@@ -544,8 +662,13 @@ def main():
     ap = argparse.ArgumentParser(description="单证录入核心 v3 (zipfile 直操作)")
     ap.add_argument("crew", nargs="?", default=DEFAULT_CREW, help="IMO Crew List xlsx 路径（可省略以仅处理 Port of Call）")
     ap.add_argument("port", nargs="?", default=DEFAULT_POC, help="Port of Call xlsx 路径")
-    ap.add_argument("output", nargs="?", default=DEFAULT_OUTPUT, help="输出 .xlsm 路径")
+    ap.add_argument("output", nargs="?", default=DEFAULT_OUTPUT, help="输出文件路径")
+    ap.add_argument("--format", choices=['xlsx', 'xlsm'], default='xlsx',
+                    help="输出格式: xlsx (推荐, Excel 不弹警告) 或 xlsm (保留宏, 可能弹警告)")
     args = ap.parse_args()
+
+    if args.format == 'xlsm' and not args.output.endswith('.xlsm'):
+        args.output = args.output.replace('.xlsx', '.xlsm')
 
     if not os.path.exists(TEMPLATE_XLSM):
         print(f"❌ 模板不存在: {TEMPLATE_XLSM}")
@@ -566,8 +689,8 @@ def main():
     print(f"  解析港口 {len(records)} 条")
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
-    process(TEMPLATE_XLSM, args.output, crews, records)
-    print(f"\n🎉 输出: {args.output}  ({os.path.getsize(args.output):,} bytes)")
+    process(TEMPLATE_XLSM, args.output, crews, records, output_format=args.format)
+    print(f"\n🎉 输出 ({args.format}): {args.output}  ({os.path.getsize(args.output):,} bytes)")
 
 
 if __name__ == "__main__":
